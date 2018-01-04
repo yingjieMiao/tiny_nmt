@@ -49,7 +49,7 @@ char prediction:  a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u,
 
 ...
 
-Done with epoch 190. Global step = 18000
+Done with epoch 180. Global step = 18000
 src:  21 2 18 19 3 2 13 15 2
 tgt:  u b r s c b m o b
 nmt:  u b r s c b m o b

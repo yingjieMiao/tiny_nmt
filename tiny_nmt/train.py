@@ -10,9 +10,10 @@ from tensorflow.python.ops import lookup_ops
 from model import NmtModel
 from data_utils import get_iterator, get_infer_iterator, create_src_tgt_lists
 
-TRAIN_SIZE = 20000
+TRAIN_SIZE = 200000
 BATCH_SIZE = 2000
-N_EPOCH = 10
+INFER_DATA_SIZE = 5000
+N_EPOCH = 200
 OUTDIR = '/tmp/tf/log/nmt/test/'
 
 class TrainModel(
@@ -21,13 +22,15 @@ class TrainModel(
 
 
 class InferModel(
-    collections.namedtuple("InferModel", ("graph", "model", "iterator", "src_placeholder", "batch_size_placeholder"))):
+    collections.namedtuple(
+        "InferModel",
+        ("graph", "model", "iterator", "src_placeholder", "batch_size_placeholder"))):
   pass
 
 
 def create_train_model(hparams):
     src_voc, tgt_voc, src_data, tgt_data = create_src_tgt_lists(TRAIN_SIZE)
-    print 'Training set created.'
+    print 'Training set created. Size = {}'.format(TRAIN_SIZE)
     g = tf.Graph()
     with g.as_default(), tf.container("train"):
         iterator = get_iterator(
@@ -44,6 +47,7 @@ def create_train_model(hparams):
             src_vocab_table=lookup_ops.index_table_from_tensor(src_voc),
             tgt_vocab_table=lookup_ops.index_table_from_tensor(tgt_voc))
     return TrainModel(graph=g, model=model, iterator=iterator)
+
 
 def create_infer_model(hparams):
     # Only need the vocab tables here. Sample size doesn't matter.
@@ -71,28 +75,14 @@ def create_infer_model(hparams):
     return InferModel(graph=g, model=model, iterator=iterator,
                       src_placeholder=src_placeholder,
                       batch_size_placeholder=batch_size_placeholder)
-        
-def init_model(model, sess):
-    # I believe this mutates the input argument, so there is no need to return the model here...
-    if model.mode == "train":
-        print 'init training model...'
-        sess.run(tf.global_variables_initializer())
-        print 'init training model tables'
-        sess.run(tf.tables_initializer())
-    if model.mode == "infer":
-        print 'restoring infer model'
-        latest_ckpt = tf.train.latest_checkpoint(OUTDIR)
-        model.saver.restore(sess, latest_ckpt)
-        print 'init infer model tables'
-        try:
-            sess.run(tf.tables_initializer())
-        except tf.errors.FailedPreconditionError:
-            print 'ignored table init error'
-            pass
-        
-    return model
+ 
+       
+def restore_model(model, sess):
+    latest_ckpt = tf.train.latest_checkpoint(OUTDIR)
+    model.saver.restore(sess, latest_ckpt)
 
-def run_sample_decode(infer_model, infer_sess, infer_src_dataset, infer_tgt_dataset, sample_size=5):
+
+def run_sample_decode(infer_model, infer_sess, infer_src_dataset, infer_tgt_dataset, sample_size):
     def _decode(infer_model, src, tgt, verbose=True):
         iter_feed_dict = {
             infer_model.src_placeholder: [src],
@@ -104,15 +94,13 @@ def run_sample_decode(infer_model, infer_sess, infer_src_dataset, infer_tgt_data
         if "eos" in output:
             output = output[:output.index("eos")]
         if verbose:
-            print "\n"
-            print "sample src: ", src
-            print "groundtruth: ", tgt
+            print "src: ", src
+            print "tgt: ", tgt
             print "nmt: ", " ".join(output)
 
         return " ".join(output)
     
-    with infer_model.graph.as_default():
-        init_model(infer_model.model, infer_sess)
+    restore_model(infer_model.model, infer_sess)
     
     for i in range(sample_size):
         id = random.randint(0, len(infer_src_dataset) - 1)
@@ -122,9 +110,8 @@ def run_sample_decode(infer_model, infer_sess, infer_src_dataset, infer_tgt_data
     for i in range(26):
         outputs.append(_decode(infer_model, str(i+1), string.ascii_lowercase[i], verbose=False))
             
-    print '\n'
-    print 'char prediction:', ', '.join(outputs)
-    print '\n'
+    print 'char prediction: {}'.format(', '.join(outputs))
+    
 
 def train(hparams):
     train_model = create_train_model(hparams)
@@ -132,26 +119,31 @@ def train(hparams):
     
     infer_model = create_infer_model(hparams)
     infer_sess = tf.Session(graph=infer_model.graph)
-    _, _, infer_src_dataset, infer_tgt_dataset = create_src_tgt_lists(2000)
+    _, _, infer_src_dataset, infer_tgt_dataset = create_src_tgt_lists(INFER_DATA_SIZE)
     
     summary_writer = tf.summary.FileWriter(os.path.join(OUTDIR, 'train_log'), train_model.graph)
     
-    # Need to open the correct graph for the sess to run
+    print 'Init training and inference models...'
     with train_model.graph.as_default():
-        inited_train_model = init_model(train_model.model, train_sess)
-        global_step = train_model.model.global_step.eval(session=train_sess)
-            
-    train_sess.run(train_model.iterator.initializer)
+        train_sess.run(tf.global_variables_initializer())
+        train_sess.run(tf.tables_initializer())        
+        train_sess.run(train_model.iterator.initializer)
+        global_step = train_sess.run(train_model.model.global_step)
     
+    with infer_model.graph.as_default():
+        infer_sess.run(tf.tables_initializer())
+            
+    print 'Start training.'    
     epoch = 0
     while epoch < N_EPOCH:
         try:
-            _, train_summary, loss_v, global_step_v = inited_train_model.train(train_sess)
+            _, train_summary, _, global_step_v = train_model.model.train(train_sess)
             summary_writer.add_summary(train_summary, global_step_v)
         except tf.errors.OutOfRangeError:
             epoch += 1
-            print("done with 1 epoch. global step = ", global_step_v, " epoch = ", epoch)
-            inited_train_model.saver.save(
+            print "\n", "* " * 10
+            print "Done with epoch {}. Global step = {}".format(epoch, global_step_v)
+            train_model.model.saver.save(
                 train_sess, os.path.join(OUTDIR, 'translate.ckpt'), global_step=global_step)            
             run_sample_decode(
                 infer_model, infer_sess, infer_src_dataset, infer_tgt_dataset, sample_size=2)
@@ -159,11 +151,12 @@ def train(hparams):
             continue
         global_step = global_step_v
         
-    inited_train_model.saver.save(
+    train_model.model.saver.save(
         train_sess, os.path.join(OUTDIR, 'translate.ckpt'), global_step=global_step)
     summary_writer.close()
     
-if __name__=="__main__":
+    
+if __name__ == "__main__":
     np.random.seed(1)
     train(tf.contrib.training.HParams(
         src_voc_size=28,

@@ -108,7 +108,7 @@ def get_iterator(src_dataset,
       source_sequence_length=src_seq_len,
       target_sequence_length=tgt_seq_len)
   
-# Create training or inference dataset.  
+# Create training or inference dataset.
 def create_src_tgt_lists(n_samples, min_seq_len=1, max_seq_len=10):
     src_voc = [str(i+1) for i in range(26)] + ["eos", "sos"]
     tgt_voc = [string.ascii_lowercase[i] for i in range(26)] + ["eos", "sos"]

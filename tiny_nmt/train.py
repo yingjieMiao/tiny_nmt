@@ -1,3 +1,6 @@
+# Based on:
+#   https://github.com/tensorflow/nmt/blob/master/nmt/train.py
+#   https://github.com/tensorflow/nmt/blob/master/nmt/model_helper.py
 import collections
 import os
 import random

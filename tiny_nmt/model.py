@@ -1,3 +1,5 @@
+# Based on:
+#   https://github.com/tensorflow/nmt/blob/master/nmt/model.py
 import tensorflow as tf
 import tensorflow.contrib.rnn as rnn
 import tensorflow.contrib.seq2seq as seq2seq

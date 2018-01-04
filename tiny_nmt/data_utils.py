@@ -1,3 +1,5 @@
+# Based on:
+#   https://github.com/tensorflow/nmt/blob/master/nmt/utils/iterator_utils.py
 import collections
 import string
 import numpy as np

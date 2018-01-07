@@ -1,7 +1,7 @@
 # Toy Neural Machine Translation with TensorFlow
 
 ## Introduction
-This is an oversimplified, no-frill refactor of the [tensorflow/nmt](https://github.com/tensorflow/nmt) library. In just under 500 lines of code, it illustrates the core idea of encoder-decoder network, and provides an end-to-end training and inference example.
+This is an oversimplified, no-frill refactor of the [tensorflow/nmt](https://github.com/tensorflow/nmt) library. In just about 500 lines of code, it illustrates the core idea of encoder-decoder network, and provides an end-to-end training and inference example. A basic attention mechanism (Luong style) is also included as a training option.
 
 Training and inference is based on synthetic data. Each source sentence is a sequence of numbers in {1, ..., 26}, and the target sentence is the sequence of corresponding ascii letters. For example, "3 2 7 26" translates to "c b g z". The source sentence is generated in two steps: 1) Sample sentence length `n` (e.g. randomly between 1 to 10); 2) Independently sample `n` numbers from {1, ..., 26}.
 
@@ -71,7 +71,6 @@ It would be interesting to look at the trained model parameters and analyze what
 ## Things not covered
 A few important components that are not covered here (yet):
 - Real language dataset
-- Attention Mechanism
 - Beam Search
 - Smarter learning rate scheduling
 - Perplexity and BLEU metrics

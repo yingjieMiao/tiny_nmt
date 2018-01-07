@@ -170,5 +170,7 @@ if __name__ == "__main__":
         num_layers=2,
         forget_bias=0.2,
         learning_rate=0.1,
-        time_major=True
+        time_major=True,
+        attention=False,
+        output_attention=False
     ))

@@ -5,6 +5,8 @@ import tensorflow.contrib.rnn as rnn
 import tensorflow.contrib.seq2seq as seq2seq
 from tensorflow.python.layers import core as layers_core
 
+from attention import AttentionWrapper, LuongAttentionMechanism
+
 class NmtModel:
     """Basic encoder-decoder model.
     
@@ -75,8 +77,8 @@ class NmtModel:
     
     def _build_encoder_decoder(self, hparams):
         with tf.variable_scope("dynamic_seq2seq"):
-            _, encoder_state = self._build_encoder(hparams)
-            logits, sample_id = self._build_decoder(encoder_state, hparams)
+            encoder_outputs, encoder_state = self._build_encoder(hparams)
+            logits, sample_id = self._build_decoder(encoder_outputs, encoder_state, hparams)
             if self.mode != "infer":
                 loss = self._compute_loss(logits)
             else:
@@ -99,7 +101,7 @@ class NmtModel:
                 swap_memory=True)
         return encoder_outputs, encoder_state
        
-    def _build_decoder(self, encoder_state, hparams):
+    def _build_decoder(self, encoder_outputs, encoder_state, hparams):
         tgt_sos_id = tf.cast(self.tgt_vocab_table.lookup(tf.constant("sos")),
                              tf.int32)
         tgt_eos_id = tf.cast(self.tgt_vocab_table.lookup(tf.constant("eos")),
@@ -107,9 +109,8 @@ class NmtModel:
         iterator = self.iterator
         maximum_iterations = self._get_infer_maximum_iterations(iterator.source_sequence_length)
         with tf.variable_scope("decoder") as decoder_scope:
-            cell = self._build_rnn_cell(
-                hparams.num_units, hparams.num_layers, hparams.forget_bias)  
-            decoder_init_state = encoder_state
+            cell, decoder_init_state = self._build_decoder_cell(
+                    hparams, encoder_outputs, encoder_state, iterator.source_sequence_length)
             
             if self.mode != "infer":
                 target_input = iterator.target_input
@@ -143,6 +144,29 @@ class NmtModel:
                 sample_id = outputs.sample_id
             
         return logits, sample_id
+
+    def _build_decoder_cell(self, hparams, encoder_outputs, encoder_state, source_sequence_length):
+        if not hparams.attention:
+            cell = self._build_rnn_cell(hparams.num_units, hparams.num_layers, hparams.forget_bias)  
+            decoder_init_state = encoder_state
+            return cell, decoder_init_state
+        else:
+            cell = self._build_attention_decoder_cell(hparams, encoder_outputs, source_sequence_length)
+            decoder_init_state = cell.zero_state(self.batch_size, tf.float32)
+            return cell, decoder_init_state
+    
+    def _build_attention_decoder_cell(self, hparams, encoder_outputs, source_sequence_length):
+        cell = self._build_rnn_cell(hparams.num_units, hparams.num_layers, hparams.forget_bias)
+        if self.time_major:
+            memory = tf.transpose(encoder_outputs, [1, 0, 2])
+        else:
+            memory = encoder_outputs
+            
+        luong_attention = LuongAttentionMechanism(hparams.num_units, memory, source_sequence_length)
+        cell = AttentionWrapper(
+                cell, luong_attention, attention_layer_size=hparams.num_units,
+                output_attention=hparams.output_attention, name="attention")
+        return cell    
 
     def _build_rnn_cell(self, num_units, num_layers, forget_bias):
         cell_list = []
